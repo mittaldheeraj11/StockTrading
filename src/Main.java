@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 public class Main {
     public static void main(String[] args) throws InterruptedException {
 
-
         StockDao stockDao = new StockDao();
 
         TradeDao tradeDao = new TradeDao();
@@ -56,25 +55,8 @@ public class Main {
         tradeEngine.executeSellRequest(sellReq3);
         System.out.println(tradeEngine.getBuyPendingRequests(stock1.getName()));
         System.out.println(tradeEngine.getSellPendingRequests(stock1.getName()));
+
+        System.out.println(tradeEngine.getBuyPendingRequests(stock.getName()));
+        System.out.println(tradeEngine.getSellPendingRequests(stock.getName()));
     }
 }
-/*
-
-Seller1 - 400 * 4
-Seller2 - 405 * 4
-
-Buyer - 450 * 6
-
-Trade would happen at 450 * 6
-
-Buyer1 - 400 * 4
-Buyer2 - 450 * 4
-Buyer3 - 600 * 4
-
-Seller came with selling price - 400 * 5
-
-
- Trade would happen at  - 600 * 4, 450 * 1
-
-
- */
