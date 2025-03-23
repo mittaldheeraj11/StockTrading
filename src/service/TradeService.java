@@ -71,7 +71,7 @@ public class TradeService implements ITradeService{
 
 
     public void executeBuyRequest(@NotNull Order buyOrderRequest) {
-        System.out.println("Got request to execute sell stock: " + buyOrderRequest.getStock() + " quantity: " + buyOrderRequest.getQuantity()
+        System.out.println("Got request to execute buy stock: " + buyOrderRequest.getStock() + " quantity: " + buyOrderRequest.getQuantity()
                 + " price: " + buyOrderRequest.getPrice());
         Stock stock = this.service.getStockDetails(buyOrderRequest.getStock());
         if (stock == null) {
