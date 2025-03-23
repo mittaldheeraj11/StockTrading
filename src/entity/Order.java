@@ -36,6 +36,8 @@ public class Order {
         return orderType;
     }
 
+    public LocalDateTime validTime;
+
     public String getStock() {
         return stock;
     }
@@ -69,6 +71,11 @@ public class Order {
     }
 
     public Order(String orderId, String userId, OrderType orderType, String stock, int quantity, double price, LocalDateTime orderPlacedTime) {
+        this(orderId, userId, orderType, stock, quantity, price, orderPlacedTime, null);
+    }
+
+    public Order(String orderId, String userId, OrderType orderType, String stock, int quantity, double price, LocalDateTime orderPlacedTime, LocalDateTime validTill) {
+
         this.orderId = orderId;
         this.userId = userId;
         this.orderType = orderType;
@@ -78,6 +85,7 @@ public class Order {
         this.price = price;
         this.orderPlacedTime = orderPlacedTime;
         this.orderStatus = OrderStatus.ACCEPTED;
+        this.validTime = validTill;
     }
 
 

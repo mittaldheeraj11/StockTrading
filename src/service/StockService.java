@@ -3,13 +3,11 @@ package service;
 import dao.StockDao;
 import entity.Order;
 import entity.Stock;
-import entity.Trade;
 import exception.InvalidStockException;
 
-import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 public class StockService implements IStockService{
 
@@ -29,24 +27,17 @@ public class StockService implements IStockService{
         return this.stockDao.createStock(stockId);
     }
 
+    /**
+     * Here for a buy requests, trade could be performed between multiple old sell requests and new buy request. So,
+     * when a trade is performed between a buy and sell request, it's left over quantity is updated and in case full
+     * sell request is completed ( i.e. all the requested sell quantity achieved, then we delete this order pending orders.
+     * @param orders  List of sell request orders with which buys request is fulfilled.
+     * @param stock stock for which transaction is going on.
+     * @param quantityMap map of order-id to quantity (i.e. with key as order-id how much quantity of stocks transaction
+     *                    happened.).
+     */
     @Override
-    public List<Trade> createTradeForBuy(Order buyOrder, List<Order> sellOrders, Map<String, Integer> quantityMap, Map<String, Double> priceMap) {
-
-        List<Trade> trades = new ArrayList<>();
-        Random random = new Random();
-        System.out.println("Trade happened with following details:");
-        for (Order order : sellOrders) {
-            Trade trade = new Trade(String.valueOf(random.nextInt()), order.getOrderId(), buyOrder.getOrderId(),
-                    quantityMap.get(order.getOrderId()), priceMap.get(order.getOrderId()),
-                    buyOrder.getOrderPlacedTime(), buyOrder.getStock());
-            trades.add(trade);
-            System.out.println(trade);
-        }
-        return trades;
-    }
-
-    @Override
-    public void markSellOrdersAtCompleted(List<Order> orders, Stock stock, Map<String, Integer> quantityMap) {
+    public void updateRemainingQuantityForSellerOrders(List<Order> orders, Stock stock, Map<String, Integer> quantityMap) {
         for (Order order : orders) {
             if (quantityMap.get(order.getOrderId()) == order.getLeftQuantity()) {
                 stock.getSellOrders().remove(order);
@@ -57,26 +48,17 @@ public class StockService implements IStockService{
         }
     }
 
+    /**
+     * Here for a sell requests, trade could be performed between multiple old buy requests and new sell request. So,
+     * when a trade is performed between a buy and sell request, it's left over quantity is updated and in case full
+     * buy request is completed ( i.e. all the requested buy quantity achieved, then we delete this order pending orders.
+     * @param orders List of buy request orders with which sell request is fulfilled.
+     * @param stock stock for which transaction is going on.
+     * @param quantityMap map of order-id to quantity (i.e. with key as order-id how much quantity of stocks transaction
+     *                    happened.).
+     */
     @Override
-    public List<Trade> getTradeCreatedForSell(Order sellOrder, List<Order> buyOrder, Map<String, Integer> quantityMap, Double perSharePrice) {
-
-        List<Trade> trades = new ArrayList<>();
-        Random random = new Random();
-        System.out.println("Trade happened with following details:");
-        for (Order order : buyOrder) {
-            Trade trade = new Trade(String.valueOf(random.nextInt()), sellOrder.getOrderId(), order.getOrderId(),
-                    quantityMap.get(order.getOrderId()), perSharePrice,
-                    sellOrder.getOrderPlacedTime(), sellOrder.getStock());
-            trades.add(trade);
-            System.out.println(trade);
-        }
-        return trades;
-    }
-
-
-
-    @Override
-    public void markBuyOrdersAtCompleted(List<Order> orders, Stock stock, Map<String, Integer> quantityMap) {
+    public void updateRemainingQuantityForBuyOrders(List<Order> orders, Stock stock, Map<String, Integer> quantityMap) {
         for (Order order : orders) {
             if (quantityMap.get(order.getOrderId()) == order.getLeftQuantity()) {
                 stock.getBuyOrders().remove(order);
@@ -87,33 +69,50 @@ public class StockService implements IStockService{
         }
     }
 
+    /**
+     * Return details of pending buy orders
+     * @param stockId stock-id for which data is requested.
+     * @return String containing details of pending buy orders.
+     * @throws InvalidStockException in-case wrong-id stockId is passed as input.
+     */
     @Override
     public String getBuyPendingRequests(String stockId) {
         Stock stock = stockDao.getStock(stockId);
         if (stock == null) {
             throw new InvalidStockException("Wrong Stock Name.");
         }
-        return "Pending Buy Request for stock: " + stockId + " \n" + fun(stock.getBuyOrders());
+        return "Pending Buy Request for stock: " + stockId + " \n" + getStringResultsForOrder(stock.getBuyOrders());
         //return String.valueOf(stock.getBuyOrders().size());
     }
 
-    private String fun(List<Order> buyOrders) {
-        StringBuilder sb = new StringBuilder();
-        for (Order order : buyOrders) {
-            sb.append("Order Id: ").append(order.getOrderId()).append(" Quantity: ").append(order.getLeftQuantity())
-                    .append(" price: ").append(order.getPrice()).append("\n");
-        }
-
-        return sb.toString();
-    }
-
+    /**
+     * Return details of pending buy orders
+     * @param stockId stock-id for which data is requested.
+     * @return String containing details of pending buy orders.
+     * @throws InvalidStockException in-case wrong-id stockId is passed as input.
+     */
     @Override
     public String getSellPendingRequests(String stockId) {
         Stock stock = stockDao.getStock(stockId);
         if (stock == null) {
             throw new InvalidStockException("Wrong Stock Name.");
         }
-        return "Pending Sell Request for stock: " + stockId + " \n" + fun(stock.getSellOrders());
+        return "Pending Sell Request for stock: " + stockId + " \n" + getStringResultsForOrder(stock.getSellOrders());
 
+    }
+
+    private String getStringResultsForOrder(List<Order> orders) {
+        StringBuilder sb = new StringBuilder();
+        if (orders == null || orders.isEmpty()) {
+            sb.append("No req pending.");
+        } else {
+            for (Order order : orders) {
+                if (order.validTime == null || order.validTime.isAfter(LocalDateTime.now()))
+                    sb.append("Order Id: ").append(order.getOrderId()).append(" Quantity: ").append(order.getLeftQuantity())
+                            .append(" price: ").append(order.getPrice()).append("\n");
+            }
+        }
+
+        return sb.toString();
     }
 }

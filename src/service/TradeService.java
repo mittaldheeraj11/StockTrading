@@ -9,6 +9,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
+import static service.TradeServiceHelper.*;
+
 public class TradeService implements ITradeService{
 
     private final IStockService service;
@@ -20,6 +22,15 @@ public class TradeService implements ITradeService{
         this.tradeDao = tradeDao;
     }
 
+    /**
+     * This method first validates the stock-id.
+     * @throws InvalidStockException in-case wrong-id stockId is passed as input.
+     * Then it extracts the list of available old buy requests, where price is greater than the sell-order request price.
+     * Then one-by-one tries to match the @param sellOrderRequest  with the available old buy requests and
+     * creates the trade between new sell request and old buy requests. In case old buy request is completed, it would
+     * remove that buy request. In case new sell request is not fullfilled, added the same in pending sell requests.
+     * @param sellOrderRequest details about the sell request order.
+     */
     public void executeSellRequest(@NotNull Order sellOrderRequest) {
         System.out.println("Got request to execute sell stock: " + sellOrderRequest.getStock() + " quantity: " + sellOrderRequest.getQuantity()
         + " price: " + sellOrderRequest.getPrice());
@@ -30,36 +41,42 @@ public class TradeService implements ITradeService{
         List<Order> buyOrder = stock.getBuyOrders();
         int quantityRequired = sellOrderRequest.getQuantity();
         synchronized (stock) {
-            Queue<Order> availableSellOrders = new PriorityQueue<>(Comparator.comparing(Order::getOrderPlacedTime));
+
             List<Order> list = buyOrder.stream()
                     .filter(bo -> bo.getPrice() >= sellOrderRequest.getPrice())
+                    .filter(bo -> {
+                        if (bo.validTime == null) {
+                            return true;
+                        } else {
+                            if (bo.validTime.isBefore(sellOrderRequest.getOrderPlacedTime())) {
+                                return false;
+                            }
+                            return true;
+                        }
+                    } )
                     .sorted(Comparator.comparing(Order::getOrderPlacedTime)).toList();
-            availableSellOrders.addAll(list);
+            Queue<Order> availableBuyOrders = new LinkedList<>(list);
 
-            if (availableSellOrders.isEmpty()) {
+            if (availableBuyOrders.isEmpty()) {
                 // order can't be placed, add in queue.
                 System.out.println("Adding order in pending req " + sellOrderRequest.getOrderId() + " quantity " +
-                        sellOrderRequest.getQuantity() + " price " + sellOrderRequest.getPrice());
+                        sellOrderRequest.getLeftQuantity() + " price " + sellOrderRequest.getPrice());
                 stock.getSellOrders().add(sellOrderRequest);
 
             } else {
+                OrderBreakupDetails orderBreakupDetails = getQuantityLeftAndCreateOrder(availableBuyOrders, quantityRequired, sellOrderRequest.getPrice());
 
-                List<Order> executedOrders = new ArrayList<>();
-                Map<String, Integer> quantityMap = new HashMap<>();
-                quantityRequired = getQuantityLeftAndCreateOrder(availableSellOrders, quantityRequired, quantityMap, executedOrders);
-
-
-                if (!executedOrders.isEmpty()) {
-                    List<Trade> tradeCreatedForSell = service.getTradeCreatedForSell(sellOrderRequest, executedOrders, quantityMap, sellOrderRequest.getPrice());
+                if (!orderBreakupDetails.getExecutedOrders().isEmpty()) {
+                    List<Trade> tradeCreatedForSell = createTradeForSell(sellOrderRequest, orderBreakupDetails);
                     tradeDao.addTrade(tradeCreatedForSell);
-                    service.markBuyOrdersAtCompleted(executedOrders, stock, quantityMap);
+                    service.updateRemainingQuantityForBuyOrders(orderBreakupDetails.getExecutedOrders(), stock, orderBreakupDetails.getQuantityMap());
                 }
 
 
-                if (quantityRequired > 0) {
+                if (orderBreakupDetails.getQuantityRemaining() > 0) {
                     System.out.println("Adding order in pending sell req " + sellOrderRequest.getOrderId() + " quantity " +
-                            quantityRequired + " price " + sellOrderRequest.getPrice()) ;
-                    sellOrderRequest.setLeftQuantity(quantityRequired);
+                            orderBreakupDetails.getQuantityRemaining() + " price " + sellOrderRequest.getPrice()) ;
+                    sellOrderRequest.setLeftQuantity(orderBreakupDetails.getQuantityRemaining());
                     stock.getSellOrders().add(sellOrderRequest);
                 }
             }
@@ -67,10 +84,16 @@ public class TradeService implements ITradeService{
 
     }
 
-
-
-
-    public void executeBuyRequest(@NotNull Order buyOrderRequest) {
+    /**
+     * This method first validates the stock-id.
+     * @throws InvalidStockException in-case wrong-id stockId is passed as input.
+     * Then it extracts the list of available old sell requests, where price is lesser than the buy-order request price.
+     * Then one-by-one tries to match the @param  buyOrderRequest with the available old sell requests and
+     * creates the trade between new buy request and old sell requests. In case old sell request is completed, it would
+     * remove that pending sell request. In case new buy request is not full-filled, added the same in pending buy requests.
+     * @param buyOrderRequest details about the buy request order.
+     */
+    public void executeBuyRequest(@NotNull final Order buyOrderRequest) {
         System.out.println("Got request to execute buy stock: " + buyOrderRequest.getStock() + " quantity: " + buyOrderRequest.getQuantity()
                 + " price: " + buyOrderRequest.getPrice());
         Stock stock = this.service.getStockDetails(buyOrderRequest.getStock());
@@ -81,11 +104,21 @@ public class TradeService implements ITradeService{
         List<Order> sellOrders = stock.getSellOrders();
 
         synchronized (stock) {
-            List<Order> list = sellOrders.stream().filter(so -> so.getPrice() <= buyOrderRequest.getPrice())
+            List<Order> list = sellOrders.stream()
+                    .filter(so -> so.getPrice() <= buyOrderRequest.getPrice())
+                    .filter(so -> {
+                        if (so.validTime == null) {
+                            return true;
+                        } else {
+                            if (so.validTime.isBefore(buyOrderRequest.getOrderPlacedTime())) {
+                                return false;
+                            }
+                            return true;
+                        }
+                    } )
                     .sorted(Comparator.comparing(Order::getOrderPlacedTime)).toList();
-            Queue<Order> availableBuyOrders = new PriorityQueue<>(Comparator.comparing(Order::getOrderPlacedTime));
-            availableBuyOrders.addAll(list);
-            if (availableBuyOrders.isEmpty()) {
+            Queue<Order> availableSellOrders = new LinkedList<>(list);
+            if (availableSellOrders.isEmpty()) {
                 // order can't be executed, add in queue.
                 System.out.println("Adding order in pending buy req " + buyOrderRequest.getOrderId() + " quantity " +
                         buyOrderRequest.getQuantity() + " price " + buyOrderRequest.getPrice());
@@ -93,56 +126,22 @@ public class TradeService implements ITradeService{
 
             } else {
 
-                List<Order> executedOrders = new ArrayList<>();
-                Map<String, Integer> quantityMap = new HashMap<>();
-                Map<String, Double> priceMap = new HashMap<>();
-                int quantityLeft = getQuantityLeftCreateOrders(availableBuyOrders, buyOrderRequest.getQuantity(), priceMap, quantityMap, executedOrders);
+                // quantityLeft -- remaining.
+                OrderBreakupDetails orderBreakupDetails = getQuantityLeftCreateOrdersAndCreateOrdersMatched(availableSellOrders, buyOrderRequest.getQuantity());
 
-                if (!executedOrders.isEmpty()) {
-                    List<Trade> tradeForBuy = service.createTradeForBuy(buyOrderRequest, executedOrders, quantityMap, priceMap);
-                    tradeDao.addTrade(tradeForBuy);
-                    service.markSellOrdersAtCompleted(executedOrders, stock, quantityMap);
+                if (!orderBreakupDetails.getExecutedOrders().isEmpty()) {
+                    List<Trade> tradesForBuyRequest = createTradeForBuy(buyOrderRequest, orderBreakupDetails);
+                    tradeDao.addTrade(tradesForBuyRequest);
+                    service.updateRemainingQuantityForSellerOrders(orderBreakupDetails.getExecutedOrders(), stock, orderBreakupDetails.getQuantityMap());
                 }
-                if (quantityLeft > 0) {
+                if (orderBreakupDetails.getQuantityRemaining() > 0) {
                     System.out.println("Adding order in pending buy req " + buyOrderRequest.getOrderId() + " quantity " +
-                            quantityLeft + " price " + buyOrderRequest.getPrice());
-                    buyOrderRequest.setLeftQuantity(quantityLeft);
+                            orderBreakupDetails.getQuantityRemaining() + " price " + buyOrderRequest.getPrice());
+                    buyOrderRequest.setLeftQuantity(orderBreakupDetails.getQuantityRemaining());
                     stock.getBuyOrders().add(buyOrderRequest);
 
                 }
             }
         }
-
-    }
-
-    private int getQuantityLeftCreateOrders(Queue<Order> availableBuyOrders, int quantityRequired, Map<String, Double> priceMap, Map<String, Integer> quantityMap, List<Order> executedOrders) {
-        while (!availableBuyOrders.isEmpty() && quantityRequired > 0) {
-
-            Order order = availableBuyOrders.poll();
-            double amount = order.getPrice();
-            int transQuantity = Integer.min(quantityRequired, order.getLeftQuantity());
-            quantityRequired -= transQuantity;
-            priceMap.put(order.getOrderId(), amount);
-            quantityMap.put(order.getOrderId(), transQuantity);
-            executedOrders.add(order);
-
-        }
-        return quantityRequired;
-    }
-
-    private int getQuantityLeftAndCreateOrder(Queue<Order> availableSellOrders, int quantityRequired, Map<String, Integer> map, List<Order> executedOrders) {
-        while (!availableSellOrders.isEmpty() && quantityRequired > 0) {
-            Order order = availableSellOrders.poll();
-            if (order.getLeftQuantity() <= quantityRequired) {
-                map.put(order.getOrderId(), order.getLeftQuantity());
-                quantityRequired -= order.getLeftQuantity();
-                executedOrders.add(order);
-            } else {
-                order.setLeftQuantity(order.getLeftQuantity() - quantityRequired);
-                map.put(order.getOrderId(), quantityRequired);
-                executedOrders.add(order);
-            }
-        }
-        return quantityRequired;
     }
 }
