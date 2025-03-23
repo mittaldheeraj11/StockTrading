@@ -4,6 +4,7 @@ import dao.StockDao;
 import dao.TradeDao;
 import entity.Order;
 import entity.Stock;
+import entity.TradeResponse;
 import exception.InvalidStockException;
 import service.StockService;
 import service.TradeService;
@@ -27,7 +28,8 @@ public class TradeEngine {
 
     public void executeSellRequest(Order sellOrderRequest) {
         try {
-            tradeService.executeSellRequest(sellOrderRequest);
+            TradeResponse tradeResponse = tradeService.executeSellRequest(sellOrderRequest);
+            //System.out.println(tradeResponse);
         } catch (InvalidStockException e) {
             System.out.println("Wrong Stock input " + sellOrderRequest.getStock());
         }
@@ -35,7 +37,8 @@ public class TradeEngine {
 
     public void executeBuyRequest(Order buyOrderRequest) {
         try {
-            tradeService.executeBuyRequest(buyOrderRequest);
+            TradeResponse tradeResponse = tradeService.executeBuyRequest(buyOrderRequest);
+            //System.out.println(tradeResponse);
         } catch (InvalidStockException e) {
             System.out.println("Wrong Stock input " + buyOrderRequest.getStock());
         }

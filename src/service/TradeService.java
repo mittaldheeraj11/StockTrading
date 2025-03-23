@@ -4,6 +4,8 @@ import dao.TradeDao;
 import entity.Order;
 import entity.Stock;
 import entity.Trade;
+import entity.TradeResponse;
+import enums.OrderType;
 import exception.InvalidStockException;
 import org.jetbrains.annotations.NotNull;
 
@@ -24,14 +26,16 @@ public class TradeService implements ITradeService{
 
     /**
      * This method first validates the stock-id.
+     *
+     * @param sellOrderRequest details about the sell request order.
+     * @return TradeResponse containing details about the breakup of trade happened.
      * @throws InvalidStockException in-case wrong-id stockId is passed as input.
      * Then it extracts the list of available old buy requests, where price is greater than the sell-order request price.
      * Then one-by-one tries to match the @param sellOrderRequest  with the available old buy requests and
      * creates the trade between new sell request and old buy requests. In case old buy request is completed, it would
      * remove that buy request. In case new sell request is not fullfilled, added the same in pending sell requests.
-     * @param sellOrderRequest details about the sell request order.
      */
-    public void executeSellRequest(@NotNull Order sellOrderRequest) {
+    public TradeResponse executeSellRequest(@NotNull Order sellOrderRequest) {
         System.out.println("Got request to execute sell stock: " + sellOrderRequest.getStock() + " quantity: " + sellOrderRequest.getQuantity()
         + " price: " + sellOrderRequest.getPrice());
         Stock stock = this.service.getStockDetails(sellOrderRequest.getStock());
@@ -62,6 +66,7 @@ public class TradeService implements ITradeService{
                 System.out.println("Adding order in pending req " + sellOrderRequest.getOrderId() + " quantity " +
                         sellOrderRequest.getLeftQuantity() + " price " + sellOrderRequest.getPrice());
                 stock.getSellOrders().add(sellOrderRequest);
+                return new TradeResponse(sellOrderRequest.getOrderType(), new HashMap<>(), sellOrderRequest.getQuantity());
 
             } else {
                 OrderBreakupDetails orderBreakupDetails = getQuantityLeftAndCreateOrder(availableBuyOrders, quantityRequired, sellOrderRequest.getPrice());
@@ -79,6 +84,7 @@ public class TradeService implements ITradeService{
                     sellOrderRequest.setLeftQuantity(orderBreakupDetails.getQuantityRemaining());
                     stock.getSellOrders().add(sellOrderRequest);
                 }
+                return createResponse(orderBreakupDetails, sellOrderRequest);
             }
         }
 
@@ -86,14 +92,16 @@ public class TradeService implements ITradeService{
 
     /**
      * This method first validates the stock-id.
+     *
+     * @param buyOrderRequest details about the buy request order.
+     * @return TradeResponse containing details about the breakup of trade happened.
      * @throws InvalidStockException in-case wrong-id stockId is passed as input.
      * Then it extracts the list of available old sell requests, where price is lesser than the buy-order request price.
      * Then one-by-one tries to match the @param  buyOrderRequest with the available old sell requests and
      * creates the trade between new buy request and old sell requests. In case old sell request is completed, it would
      * remove that pending sell request. In case new buy request is not full-filled, added the same in pending buy requests.
-     * @param buyOrderRequest details about the buy request order.
      */
-    public void executeBuyRequest(@NotNull final Order buyOrderRequest) {
+    public TradeResponse executeBuyRequest(@NotNull final Order buyOrderRequest) {
         System.out.println("Got request to execute buy stock: " + buyOrderRequest.getStock() + " quantity: " + buyOrderRequest.getQuantity()
                 + " price: " + buyOrderRequest.getPrice());
         Stock stock = this.service.getStockDetails(buyOrderRequest.getStock());
@@ -123,6 +131,8 @@ public class TradeService implements ITradeService{
                 System.out.println("Adding order in pending buy req " + buyOrderRequest.getOrderId() + " quantity " +
                         buyOrderRequest.getQuantity() + " price " + buyOrderRequest.getPrice());
                 stock.getBuyOrders().add(buyOrderRequest);
+                TradeResponse tradeResponse = new TradeResponse(OrderType.BUY, new HashMap<>(), buyOrderRequest.getQuantity());
+                return tradeResponse;
 
             } else {
 
@@ -141,7 +151,9 @@ public class TradeService implements ITradeService{
                     stock.getBuyOrders().add(buyOrderRequest);
 
                 }
+                return createResponse(orderBreakupDetails, buyOrderRequest);
             }
         }
     }
+
 }

@@ -2,6 +2,8 @@ package service;
 
 import entity.Order;
 import entity.Trade;
+import entity.TradeResponse;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
@@ -103,4 +105,17 @@ public class TradeServiceHelper {
         }
         return new OrderBreakupDetails(priceMap, quantityMap, executedOrders, quantityRequired);
     }
+
+    public static TradeResponse createResponse(OrderBreakupDetails orderBreakupDetails, @NotNull Order buyOrderRequest) {
+        Map<Integer, Double> map = new HashMap<>();
+        for (Order order : orderBreakupDetails.getExecutedOrders()) {
+            Integer quantity = orderBreakupDetails.getQuantityMap().get(order.getOrderId());
+            Double price = orderBreakupDetails.getPriceMap().get(order.getOrderId());
+            map.put(quantity, price);
+        }
+        TradeResponse tradeResponse = new TradeResponse(buyOrderRequest.getOrderType(), map, orderBreakupDetails.getQuantityRemaining());
+        return tradeResponse;
+
+    }
+
 }
